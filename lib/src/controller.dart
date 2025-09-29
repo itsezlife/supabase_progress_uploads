@@ -142,7 +142,7 @@ class SupabaseUploadController {
             _progressMap[newFileId] = completedProgress;
             _progressController.add(completedProgress);
 
-            _urlCompleters[newFileId]!.complete(publicUrl);
+            _urlCompleters[newFileId]?.complete(publicUrl);
             _completionController.add(newFileId);
           } catch (error, stackTrace) {
             if (enableDebugLogs) {
@@ -157,7 +157,7 @@ class SupabaseUploadController {
         },
       );
 
-      return _urlCompleters[newFileId]!.future;
+      return _urlCompleters[newFileId]?.future;
     } catch (_) {
       rethrow;
     } finally {
