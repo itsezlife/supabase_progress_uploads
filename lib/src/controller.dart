@@ -66,11 +66,12 @@ class SupabaseUploadController {
   }) async {
     final newFileId = fileId ?? generateFileId();
 
-    // final accessToken =
-    //     _supabase.auth.currentSession?.accessToken ?? supabaseAnonKey;
+    final accessToken =
+        _supabase.auth.currentSession?.accessToken ?? supabaseAnonKey;
 
     final headers = {
       'x-upsert': upsert.toString(),
+      'Authorization': 'Bearer $accessToken',
       ..._supabase.storage.from(bucketName).headers,
     };
 
