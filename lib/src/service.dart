@@ -11,7 +11,7 @@ class SupabaseUploadService {
     String bucketName, {
     required this.supabaseAnonKey,
     this.enableDebugLogs = false,
-    this.cacheControl = 3600,
+    this.cacheControl = '3600',
     this.rootPath,
   }) : controller = SupabaseUploadController(
           supabase,
@@ -28,7 +28,7 @@ class SupabaseUploadService {
   final SupabaseUploadController controller;
   final String supabaseAnonKey;
   final bool enableDebugLogs;
-  final int cacheControl;
+  final String cacheControl;
 
   /// This is the path that will be used to store the uploaded files.
   ///

@@ -17,7 +17,7 @@ class SupabaseUploadController {
     this.bucketName, {
     required this.supabaseAnonKey,
     this.enableDebugLogs = false,
-    this.cacheControl = 3600,
+    this.cacheControl = '3600',
     this.rootPath,
     this.persistentCache = false,
     this.upsert = true,
@@ -31,7 +31,7 @@ class SupabaseUploadController {
   final Map<String, TusClient> _clients = {};
   final Map<String, ProgressResult> _progressMap = {};
   final bool enableDebugLogs;
-  final int cacheControl;
+  final String cacheControl;
   final String? rootPath;
   final bool persistentCache;
   final bool upsert;
