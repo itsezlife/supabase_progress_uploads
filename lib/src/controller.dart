@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:developer' as dev;
+import 'dart:io';
 
 import 'package:cross_file/cross_file.dart';
 import 'package:path/path.dart' as path;
@@ -14,22 +15,26 @@ class SupabaseUploadController {
   SupabaseUploadController(
     this._supabase,
     this.bucketName, {
+    required this.supabaseAnonKey,
     this.enableDebugLogs = false,
-    this.cacheControl = 'no-cache',
+    this.cacheControl = 3600,
     this.rootPath,
     this.persistentCache = false,
+    this.upsert = true,
   }) {
     'Initialized SupabaseUploadController for bucket: $bucketName'
         .logIf(enableDebugLogs);
   }
   final SupabaseClient _supabase;
   final String bucketName;
+  final String supabaseAnonKey;
   final Map<int, TusClient> _clients = {};
   final Map<int, ProgressResult> _progressMap = {};
   final bool enableDebugLogs;
-  final String cacheControl;
+  final int cacheControl;
   final String? rootPath;
   final bool persistentCache;
+  final bool upsert;
 
   final Map<int, Completer<String>> _urlCompleters = {};
 
@@ -54,23 +59,27 @@ class SupabaseUploadController {
   Future<String?> startUpload({
     required XFile file,
     int? fileId,
+    String? fileName,
     String? contentType,
     int? chunkSize,
     ProgressCallback? onUploadProgress,
   }) async {
     final newFileId = fileId ?? generateFileId();
 
+    final accessToken =
+        _supabase.auth.currentSession?.accessToken ?? supabaseAnonKey;
+
     final headers = {
-      'Authorization': 'Bearer ${_supabase.auth.currentSession?.accessToken}',
-      'x-upsert': 'true',
-      'cache-control': cacheControl,
+      'Authorization': 'Bearer $accessToken',
+      'x-upsert': upsert.toString(),
     };
 
     final userId = _supabase.auth.currentUser?.id;
-    final filename = file.name;
-    final fileName = path.basename(filename);
-    final fileType = file.mimeType ?? contentType ?? 'image/*';
-    final objectName = _buildRootPath(userId, fileName);
+    final filename = fileName ?? file.name;
+    final $fileName = path.basename(filename);
+    final fileType =
+        file.mimeType ?? contentType ?? 'image/${file.extension()}';
+    final objectName = _buildRootPath(userId, $fileName);
 
     _progressMap[newFileId] = const ProgressResult.empty();
 
@@ -78,6 +87,7 @@ class SupabaseUploadController {
       'bucketName': bucketName,
       'objectName': objectName,
       'contentType': fileType,
+      'cacheControl': cacheControl,
     };
 
     final uploadUrl = '${_supabase.storage.url}/upload/resumable';
@@ -208,4 +218,15 @@ class SupabaseUploadController {
     await _progressController.close();
     await _completionController.close();
   }
+}
+
+/// {@template file_extension}
+/// Extension on [File] to check if it is a video file.
+/// {@endtemplate}
+extension FileExtension on XFile {
+  /// Returns [File] extension in `.xxx` format
+  String extension({bool removeDot = true}) => path
+      .extension(this.path)
+      .toLowerCase()
+      .replaceFirst(removeDot ? '.' : '', '');
 }

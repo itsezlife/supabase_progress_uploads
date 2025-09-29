@@ -10,12 +10,14 @@ class SupabaseUploadService {
   SupabaseUploadService(
     SupabaseClient supabase,
     String bucketName, {
+    required this.supabaseAnonKey,
     this.enableDebugLogs = false,
-    this.cacheControl = 'no-cache',
+    this.cacheControl = 3600,
     this.rootPath,
   }) : controller = SupabaseUploadController(
           supabase,
           bucketName,
+          supabaseAnonKey: supabaseAnonKey,
           enableDebugLogs: enableDebugLogs,
           cacheControl: cacheControl,
           rootPath: rootPath,
@@ -23,9 +25,11 @@ class SupabaseUploadService {
     'Initialized SupabaseUploadService with bucket: $bucketName'
         .logIf(enableDebugLogs);
   }
+
   final SupabaseUploadController controller;
+  final String supabaseAnonKey;
   final bool enableDebugLogs;
-  final String cacheControl;
+  final int cacheControl;
 
   /// This is the path that will be used to store the uploaded files.
   ///

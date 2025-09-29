@@ -40,8 +40,16 @@ class _UploadExampleState extends State<UploadExample> {
     super.initState();
     final supabase = Supabase.instance.client;
     supabase.auth.signInAnonymously();
-    _uploadService = SupabaseUploadService(supabase, 'your_bucket_name');
-    _uploadController = SupabaseUploadController(supabase, 'your_bucket_name');
+    _uploadService = SupabaseUploadService(
+      supabase,
+      'your_bucket_name',
+      supabaseAnonKey: 'your_supabase_anon_key',
+    );
+    _uploadController = SupabaseUploadController(
+      supabase,
+      'your_bucket_name',
+      supabaseAnonKey: 'your_supabase_anon_key',
+    );
   }
 
   Future<void> _uploadSingleFile() async {
