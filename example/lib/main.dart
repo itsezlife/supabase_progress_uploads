@@ -88,7 +88,7 @@ class _UploadExampleState extends State<UploadExample> {
   Future<void> _uploadWithController() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
     if (image != null) {
-      int fileId = _uploadController.generateFileId();
+      String fileId = _uploadController.generateFileId();
       String? url = await _uploadController.startUpload(
         file: image,
         fileId: fileId,

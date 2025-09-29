@@ -4,7 +4,6 @@ import 'package:supabase_progress_uploads/src/controller.dart';
 import 'package:supabase_progress_uploads/src/logger.dart';
 import 'package:supabase_progress_uploads/src/progress.dart';
 import 'package:tusc/tusc.dart';
-import 'package:uuid/uuid.dart';
 
 class SupabaseUploadService {
   SupabaseUploadService(
@@ -43,7 +42,7 @@ class SupabaseUploadService {
     ProgressCallback? onUploadProgress,
   }) async {
     'Uploading file: ${file.name}'.logIf(enableDebugLogs);
-    final fileId = const Uuid().v4().hashCode;
+    final fileId = controller.generateFileId();
     'File registered with ID: $fileId'.logIf(enableDebugLogs);
 
     await controller.startUpload(
@@ -69,16 +68,16 @@ class SupabaseUploadService {
     'Starting multiple file upload for ${files.length} files'
         .logIf(enableDebugLogs);
 
-    final fileIds = files.map((file) => const Uuid().v4().hashCode).toList();
+    final fileIds = files.map((file) => controller.generateFileId()).toList();
 
     // Step 2: Create a map to track progress for each file.
-    final progressMap = <int, ProgressResult>{};
+    final progressMap = <String, ProgressResult>{};
     for (final id in fileIds) {
       progressMap[id] = const ProgressResult.empty();
     }
 
     // Step 3: Define a helper function to calculate and report total progress.
-    void updateAndReportProgress(int fileId, ProgressResult progress) {
+    void updateAndReportProgress(String fileId, ProgressResult progress) {
       progressMap[fileId] = progress;
 
       // Calculate total progress across all files
@@ -124,7 +123,7 @@ class SupabaseUploadService {
     return uploadUrls;
   }
 
-  ProgressResult getUploadProgress(int fileId) {
+  ProgressResult getUploadProgress(String fileId) {
     final progress = controller.getFileProgress(fileId);
     'Current progress for file ID '
             '$fileId: ${"${(progress.progress * 100).toStringAsFixed(1)}%"}'

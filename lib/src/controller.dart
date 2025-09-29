@@ -28,18 +28,18 @@ class SupabaseUploadController {
   final SupabaseClient _supabase;
   final String bucketName;
   final String supabaseAnonKey;
-  final Map<int, TusClient> _clients = {};
-  final Map<int, ProgressResult> _progressMap = {};
+  final Map<String, TusClient> _clients = {};
+  final Map<String, ProgressResult> _progressMap = {};
   final bool enableDebugLogs;
   final int cacheControl;
   final String? rootPath;
   final bool persistentCache;
   final bool upsert;
 
-  final Map<int, Completer<String>> _urlCompleters = {};
+  final Map<String, Completer<String>> _urlCompleters = {};
 
   final _progressController = StreamController<ProgressResult>.broadcast();
-  final _completionController = StreamController<int>.broadcast();
+  final _completionController = StreamController<String>.broadcast();
   static const _uuid = Uuid();
 
   Future<TusCache> get cache async => persistentCache
@@ -47,18 +47,18 @@ class SupabaseUploadController {
           (await getTemporaryDirectory()).path, 'supabase_progress_uploads'))
       : TusMemoryCache();
 
-  Stream<int> get completionStream => _completionController.stream;
+  Stream<String> get completionStream => _completionController.stream;
 
-  int generateFileId() => _uuid.v4().hashCode;
+  String generateFileId() => _uuid.v4();
 
-  Future<void> removeFile(int fileId) async {
+  Future<void> removeFile(String fileId) async {
     'Removing file with ID: $fileId'.logIf(enableDebugLogs);
     _clients.remove(fileId);
   }
 
   Future<String?> startUpload({
     required XFile file,
-    int? fileId,
+    String? fileId,
     String? fileName,
     String? contentType,
     int? chunkSize,
@@ -67,7 +67,6 @@ class SupabaseUploadController {
     final newFileId = fileId ?? generateFileId();
 
     try {
-
       final accessToken =
           _supabase.auth.currentSession?.accessToken ?? supabaseAnonKey;
 
@@ -104,7 +103,7 @@ class SupabaseUploadController {
         chunkSize: chunkSize,
       );
 
-      _clients[file.hashCode] = client;
+      _clients[newFileId] = client;
 
       'Starting upload for file ID: $newFileId'.logIf(enableDebugLogs);
 
@@ -177,17 +176,17 @@ class SupabaseUploadController {
     return '$rootPath/$fileName';
   }
 
-  void pauseUpload(int fileId) {
+  void pauseUpload(String fileId) {
     'Pausing upload for file ID: $fileId'.logIf(enableDebugLogs);
     _clients[fileId]?.pauseUpload();
   }
 
-  void resumeUpload(int fileId) {
+  void resumeUpload(String fileId) {
     'Resuming upload for file ID: $fileId'.logIf(enableDebugLogs);
     _clients[fileId]?.resumeUpload();
   }
 
-  Future<void> cancelUpload(int fileId) async {
+  Future<void> cancelUpload(String fileId) async {
     'Canceling upload for file ID: $fileId'.logIf(enableDebugLogs);
     await _clients[fileId]?.cancelUpload();
     _clients.remove(fileId);
@@ -195,7 +194,7 @@ class SupabaseUploadController {
     _urlCompleters.remove(fileId);
   }
 
-  ProgressResult getFileProgress(int fileId) {
+  ProgressResult getFileProgress(String fileId) {
     final progress = _progressMap[fileId] ?? const ProgressResult.empty();
     'Current progress for file ID '
             '$fileId: ${(progress.progress * 100).toStringAsFixed(1)}%'
@@ -203,7 +202,7 @@ class SupabaseUploadController {
     return progress;
   }
 
-  Future<String?> getUploadedUrl(int fileId) async {
+  Future<String?> getUploadedUrl(String fileId) async {
     'Retrieving uploaded URL for file ID: $fileId'.logIf(enableDebugLogs);
     if (_urlCompleters.containsKey(fileId)) {
       return _urlCompleters[fileId]?.future;
