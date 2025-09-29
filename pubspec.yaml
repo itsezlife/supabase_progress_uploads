@@ -1,5 +1,6 @@
 name: supabase_progress_uploads
-description: A package for resumable file uploads with progress tracking, integrated with Supabase.
+description: A package for resumable file uploads with progress tracking,
+  integrated with Supabase.
 version: 1.0.4
 homepage: https://github.com/itsatifsiddiqui/supabase_progress_uploads
 
@@ -7,17 +8,19 @@ environment:
   sdk: ">=3.3.0 <4.0.0"
 
 dependencies:
+  cross_file: ^0.3.4+2
+  equatable: ^2.0.7
   flutter:
     sdk: flutter
-  tus_client_dart: ^2.5.0
+  http: ^1.5.0
+  path: ^1.9.1
   path_provider: ^2.1.5
   supabase_flutter: ^2.9.1
+  tus_client_dart: ^2.5.0
+  tusc: ^2.1.0
   uuid: ^4.5.1
-  path: ^1.9.1
-  cross_file: ^0.3.4+2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
-flutter:
+  very_good_analysis: ^9.0.0

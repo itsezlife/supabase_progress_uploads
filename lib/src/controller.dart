@@ -1,83 +1,64 @@
 import 'dart:async';
+import 'dart:developer' as dev;
 
 import 'package:cross_file/cross_file.dart';
 import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:tus_client_dart/tus_client_dart.dart';
+import 'package:supabase_progress_uploads/src/logger.dart';
+import 'package:supabase_progress_uploads/src/progress.dart';
+import 'package:tusc/tusc.dart';
 import 'package:uuid/uuid.dart';
 
-import 'logger.dart';
-
 class SupabaseUploadController {
-  final SupabaseClient _supabase;
-  final String bucketName;
-  final Map<int, TusClient> _clients = {};
-  final Map<int, double> _progressMap = {};
-  final bool enableDebugLogs;
-  final String cacheControl;
-  final String? rootPath;
-
-  final Map<int, Completer<String>> _urlCompleters = {};
-
-  final _progressController = StreamController<double>.broadcast();
-  final _completionController = StreamController<int>.broadcast();
-  final _uuid = Uuid();
-
-  final memoryStore = TusMemoryStore();
-
-  Stream<int> get completionStream => _completionController.stream;
-
   SupabaseUploadController(
     this._supabase,
     this.bucketName, {
     this.enableDebugLogs = false,
     this.cacheControl = 'no-cache',
     this.rootPath,
+    this.persistentCache = false,
   }) {
     'Initialized SupabaseUploadController for bucket: $bucketName'
         .logIf(enableDebugLogs);
   }
+  final SupabaseClient _supabase;
+  final String bucketName;
+  final Map<int, TusClient> _clients = {};
+  final Map<int, ProgressResult> _progressMap = {};
+  final bool enableDebugLogs;
+  final String cacheControl;
+  final String? rootPath;
+  final bool persistentCache;
 
-  Future<int> addFile(XFile file) async {
-    final fileId = _uuid.v4().hashCode;
-    'Adding file: ${file.name} with generated ID: $fileId'
-        .logIf(enableDebugLogs);
+  final Map<int, Completer<String>> _urlCompleters = {};
 
-    final tusClient = TusClient(
-      file,
-      store: memoryStore,
-      retries: 5,
-      retryInterval: 2,
-      retryScale: RetryScale.lineal,
-    );
-    _clients[fileId] = tusClient;
-    'TusClient created for file ID: $fileId'.logIf(enableDebugLogs);
-    return fileId;
-  }
+  final _progressController = StreamController<ProgressResult>.broadcast();
+  final _completionController = StreamController<int>.broadcast();
+  static const _uuid = Uuid();
+
+  Future<TusCache> get cache async => persistentCache
+      ? TusPersistentCache(path.join(
+          (await getTemporaryDirectory()).path, 'supabase_progress_uploads'))
+      : TusMemoryCache();
+
+  Stream<int> get completionStream => _completionController.stream;
+
+  int generateFileId() => _uuid.v4().hashCode;
 
   Future<void> removeFile(int fileId) async {
     'Removing file with ID: $fileId'.logIf(enableDebugLogs);
     _clients.remove(fileId);
   }
 
-  Future<void> startUpload(
-    int fileId, {
+  Future<String?> startUpload({
+    required XFile file,
+    int? fileId,
     String? contentType,
-    Function(double progress)? onUploadProgress,
+    int? chunkSize,
+    ProgressCallback? onUploadProgress,
   }) async {
-    final client = _clients[fileId];
-    if (client == null) {
-      'No client found for file ID: $fileId'.logIf(enableDebugLogs);
-      return;
-    }
-
-    'Starting upload for file ID: $fileId'.logIf(enableDebugLogs);
-
-    // Create a completer for this upload
-    _urlCompleters[fileId] = Completer<String>();
-
-    final uploadUrl = '${_supabase.storage.url}/upload/resumable';
-    final uri = Uri.parse(uploadUrl);
+    final newFileId = fileId ?? generateFileId();
 
     final headers = {
       'Authorization': 'Bearer ${_supabase.auth.currentSession?.accessToken}',
@@ -86,12 +67,12 @@ class SupabaseUploadController {
     };
 
     final userId = _supabase.auth.currentUser!.id;
-    final filename = client.file.name;
+    final filename = file.name;
     final fileName = path.basename(filename);
-    final fileType = client.file.mimeType ?? contentType ?? 'image/*';
+    final fileType = file.mimeType ?? contentType ?? 'image/*';
     final objectName = _buildRootPath(userId, fileName);
 
-    _progressMap[fileId] = 0.0;
+    _progressMap[newFileId] = const ProgressResult.empty();
 
     final metadata = {
       'bucketName': bucketName,
@@ -99,48 +80,77 @@ class SupabaseUploadController {
       'contentType': fileType,
     };
 
+    final uploadUrl = '${_supabase.storage.url}/upload/resumable';
+    final uri = Uri.parse(uploadUrl);
+    final client = TusClient(
+      file: file,
+      url: uploadUrl,
+      headers: headers,
+      metadata: metadata,
+      cache: await cache,
+      chunkSize: chunkSize,
+    );
+
+    _clients[file.hashCode] = client;
+
+    'Starting upload for file ID: $newFileId'.logIf(enableDebugLogs);
+
+    // Create a completer for this upload
+    _urlCompleters[newFileId] = Completer<String>();
+
     'Upload configuration - URI: $uri'.logIf(enableDebugLogs);
     'Upload metadata: $metadata'.logIf(enableDebugLogs);
 
-    await client.upload(
-      uri: uri,
-      headers: headers,
-      metadata: metadata,
-      onStart: (TusClient client, Duration? estimate) {
-        'Upload started for file ID: $fileId ${estimate != null ? "- Estimated duration: $estimate" : ""}'
-            .logIf(enableDebugLogs);
-      },
-      onProgress: (progress, duration) {
-        'Upload progress for file ID: $fileId - ${(progress * 100).toStringAsFixed(1)}%'
+    await client.startUpload(
+      onProgress: (count, total, response) {
+        'Progress: $count of $total | ${(count / total * 100).toInt()}%'
             .logIf(enableDebugLogs);
 
-        onUploadProgress?.call(progress);
-        _progressMap[fileId] = progress;
+        onUploadProgress?.call(count, total, response);
+
+        final progress =
+            ProgressResult(count: count, total: total, response: response);
+        _progressMap[newFileId] = progress;
         _progressController.add(progress);
       },
-      onComplete: () async {
+      onComplete: (response) {
         try {
           final publicUrl =
               _supabase.storage.from(bucketName).getPublicUrl(objectName);
 
-          'Upload completed for file ID: $fileId - URL: $publicUrl'
+          'Upload completed for file ID: $newFileId - URL: $publicUrl'
               .logIf(enableDebugLogs);
 
-          _progressMap[fileId] = 100;
-          _progressController.add(100.0);
-          _urlCompleters[fileId]?.complete(publicUrl);
-          _completionController.add(fileId);
-        } catch (e) {
-          'Error completing upload for file ID: $fileId - Error: $e'
-              .logIf(enableDebugLogs);
+          final progress = _progressMap[newFileId]!;
+          final completedProgress = progress.copyWith(
+            count: progress.total,
+            response: response,
+          );
+
+          _progressMap[newFileId] = completedProgress;
+          _progressController.add(completedProgress);
+
+          _urlCompleters[newFileId]!.complete(publicUrl);
+          _completionController.add(newFileId);
+        } catch (error, stackTrace) {
+          if (enableDebugLogs) {
+            dev.log(
+              'Error completing upload for file ID: $newFileId ',
+              error: error,
+              stackTrace: stackTrace,
+              name: 'supabase_progress_uploads',
+            );
+          }
         }
       },
     );
+
+    return _urlCompleters[newFileId]!.future;
   }
 
   String _buildRootPath(String userId, String fileName) {
     if (rootPath == null) return '$userId/$fileName';
-    if (rootPath!.isEmpty) return '$fileName';
+    if (rootPath!.isEmpty) return fileName;
     return '$rootPath/$fileName';
   }
 
@@ -151,7 +161,7 @@ class SupabaseUploadController {
 
   void resumeUpload(int fileId) {
     'Resuming upload for file ID: $fileId'.logIf(enableDebugLogs);
-    _clients[fileId]?.createUpload();
+    _clients[fileId]?.resumeUpload();
   }
 
   Future<void> cancelUpload(int fileId) async {
@@ -162,9 +172,10 @@ class SupabaseUploadController {
     _urlCompleters.remove(fileId);
   }
 
-  double getFileProgress(int fileId) {
-    final progress = _progressMap[fileId] ?? 0.0;
-    'Current progress for file ID $fileId: ${(progress * 100).toStringAsFixed(1)}%'
+  ProgressResult getFileProgress(int fileId) {
+    final progress = _progressMap[fileId] ?? const ProgressResult.empty();
+    'Current progress for file ID '
+            '$fileId: ${(progress.progress * 100).toStringAsFixed(1)}%'
         .logIf(enableDebugLogs);
     return progress;
   }
@@ -180,12 +191,12 @@ class SupabaseUploadController {
 
   Future<void> dispose() async {
     'Disposing SupabaseUploadController'.logIf(enableDebugLogs);
-    for (var client in _clients.values) {
+    for (final client in _clients.values) {
       await client.cancelUpload();
     }
     _clients.clear();
     _progressMap.clear();
-    for (var completer in _urlCompleters.values) {
+    for (final completer in _urlCompleters.values) {
       if (!completer.isCompleted) {
         completer.completeError('Upload cancelled due to controller disposal');
       }

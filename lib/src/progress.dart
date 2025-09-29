@@ -1,32 +1,41 @@
-class SupabaseUploadProgress {
-  final int fileId;
-  final double progress;
-  SupabaseUploadProgress({
-    required this.fileId,
-    required this.progress,
+import 'package:equatable/equatable.dart';
+import 'package:http/http.dart' as http;
+
+class ProgressResult extends Equatable {
+  const ProgressResult({
+    required this.count,
+    required this.total,
+    this.response,
   });
 
-  SupabaseUploadProgress copyWith({
-    int? fileId,
-    double? progress,
+  const ProgressResult.empty() : this(count: 0, total: 0, response: null);
+
+  bool get isEmpty => this == const ProgressResult.empty();
+
+  /// The number of bytes uploaded.
+  final int count;
+
+  /// The total number of bytes to upload.
+  final int total;
+
+  /// The response from the server.
+  final http.Response? response;
+
+  /// The progress of the upload as a percentage.
+  double get progress => count / total;
+
+  ProgressResult copyWith({
+    int? count,
+    int? total,
+    http.Response? response,
   }) {
-    return SupabaseUploadProgress(
-      fileId: fileId ?? this.fileId,
-      progress: progress ?? this.progress,
+    return ProgressResult(
+      count: count ?? this.count,
+      total: total ?? this.total,
+      response: response ?? this.response,
     );
   }
 
   @override
-  String toString() =>
-      'SupabaseUploadProgress(fileId: $fileId, progress: $progress)';
-
-  @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-
-    return other is SupabaseUploadProgress && other.fileId == fileId;
-  }
-
-  @override
-  int get hashCode => fileId.hashCode;
+  List<Object?> get props => [count, total, response];
 }

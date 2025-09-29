@@ -32,8 +32,8 @@ class _UploadExampleState extends State<UploadExample> {
   final ImagePicker _picker = ImagePicker();
   late SupabaseUploadService _uploadService;
   late SupabaseUploadController _uploadController;
-  double _singleProgress = 0.0;
-  double _multipleProgress = 0.0;
+  ProgressResult _singleProgress = const ProgressResult.empty();
+  ProgressResult _multipleProgress = const ProgressResult.empty();
 
   @override
   void initState() {
@@ -49,8 +49,9 @@ class _UploadExampleState extends State<UploadExample> {
     if (image != null) {
       String? url = await _uploadService.uploadFile(
         image,
-        onUploadProgress: (progress) {
-          setState(() => _singleProgress = progress);
+        onUploadProgress: (count, total, response) {
+          setState(() => _singleProgress =
+              ProgressResult(count: count, total: total, response: response));
         },
       );
       ScaffoldMessenger.of(context)
@@ -64,8 +65,9 @@ class _UploadExampleState extends State<UploadExample> {
     if (images.isNotEmpty) {
       List<String?> urls = await _uploadService.uploadMultipleFiles(
         images,
-        onUploadProgress: (progress) {
-          setState(() => _multipleProgress = progress);
+        onUploadProgress: (count, total, response) {
+          setState(() => _multipleProgress =
+              ProgressResult(count: count, total: total, response: response));
         },
       );
 
@@ -78,14 +80,15 @@ class _UploadExampleState extends State<UploadExample> {
   Future<void> _uploadWithController() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
     if (image != null) {
-      int fileId = await _uploadController.addFile(image);
-      _uploadController.startUpload(
-        fileId,
-        onUploadProgress: (progress) {
-          setState(() => _singleProgress = progress);
+      int fileId = _uploadController.generateFileId();
+      String? url = await _uploadController.startUpload(
+        file: image,
+        fileId: fileId,
+        onUploadProgress: (count, total, response) {
+          setState(() => _singleProgress =
+              ProgressResult(count: count, total: total, response: response));
         },
       );
-      String? url = await _uploadController.getUploadedUrl(fileId);
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('File Uploaded')));
       print('Uploaded file URL: $url');
@@ -104,14 +107,15 @@ class _UploadExampleState extends State<UploadExample> {
               onPressed: _uploadSingleFile,
               child: const Text('Upload Single File'),
             ),
-            Text('Single Progress: ${(_singleProgress).toStringAsFixed(2)}%'),
+            Text(
+                'Single Progress: ${(_singleProgress.progress * 100).toStringAsFixed(2)}%'),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: _uploadMultipleFiles,
               child: const Text('Upload Multiple Files'),
             ),
             Text(
-                'Multiple Progress: ${(_multipleProgress).toStringAsFixed(2)}%'),
+                'Multiple Progress: ${(_multipleProgress.progress * 100).toStringAsFixed(2)}%'),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: _uploadWithController,
