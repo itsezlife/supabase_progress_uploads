@@ -66,97 +66,106 @@ class SupabaseUploadController {
   }) async {
     final newFileId = fileId ?? generateFileId();
 
-    final accessToken =
-        _supabase.auth.currentSession?.accessToken ?? supabaseAnonKey;
+    try {
 
-    final headers = {
-      'x-upsert': upsert.toString(),
-      'Authorization': 'Bearer $accessToken',
-      ..._supabase.storage.from(bucketName).headers,
-    };
+      final accessToken =
+          _supabase.auth.currentSession?.accessToken ?? supabaseAnonKey;
 
-    final userId = _supabase.auth.currentUser?.id;
-    final filename = fileName ?? file.name;
-    final $fileName = path.basename(filename);
-    final fileType =
-        file.mimeType ?? contentType ?? 'image/${file.extension()}';
-    final objectName = _buildRootPath(userId, $fileName);
+      final headers = {
+        'x-upsert': upsert.toString(),
+        'Authorization': 'Bearer $accessToken',
+        ..._supabase.storage.from(bucketName).headers,
+      };
 
-    _progressMap[newFileId] = const ProgressResult.empty();
+      final userId = _supabase.auth.currentUser?.id;
+      final filename = fileName ?? file.name;
+      final $fileName = path.basename(filename);
+      final fileType =
+          file.mimeType ?? contentType ?? 'image/${file.extension()}';
+      final objectName = _buildRootPath(userId, $fileName);
 
-    final metadata = {
-      'bucketName': bucketName,
-      'objectName': objectName,
-      'contentType': fileType,
-      'cacheControl': cacheControl,
-    };
+      _progressMap[newFileId] = const ProgressResult.empty();
 
-    final uploadUrl = '${_supabase.storage.url}/upload/resumable';
-    final uri = Uri.parse(uploadUrl);
-    final client = TusClient(
-      file: file,
-      url: uploadUrl,
-      headers: headers,
-      metadata: metadata,
-      cache: await cache,
-      chunkSize: chunkSize,
-    );
+      final metadata = {
+        'bucketName': bucketName,
+        'objectName': objectName,
+        'contentType': fileType,
+        'cacheControl': cacheControl,
+      };
 
-    _clients[file.hashCode] = client;
+      final uploadUrl = '${_supabase.storage.url}/upload/resumable';
+      final uri = Uri.parse(uploadUrl);
+      final client = TusClient(
+        file: file,
+        url: uploadUrl,
+        headers: headers,
+        metadata: metadata,
+        cache: await cache,
+        chunkSize: chunkSize,
+      );
 
-    'Starting upload for file ID: $newFileId'.logIf(enableDebugLogs);
+      _clients[file.hashCode] = client;
 
-    // Create a completer for this upload
-    _urlCompleters[newFileId] = Completer<String>();
+      'Starting upload for file ID: $newFileId'.logIf(enableDebugLogs);
 
-    'Upload configuration - URI: $uri'.logIf(enableDebugLogs);
-    'Upload metadata: $metadata'.logIf(enableDebugLogs);
+      // Create a completer for this upload
+      _urlCompleters[newFileId] = Completer<String>();
 
-    await client.startUpload(
-      onProgress: (count, total, response) {
-        'Progress: $count of $total | ${(count / total * 100).toInt()}%'
-            .logIf(enableDebugLogs);
+      'Upload configuration - URI: $uri'.logIf(enableDebugLogs);
+      'Upload metadata: $metadata'.logIf(enableDebugLogs);
 
-        onUploadProgress?.call(count, total, response);
-
-        final progress =
-            ProgressResult(count: count, total: total, response: response);
-        _progressMap[newFileId] = progress;
-        _progressController.add(progress);
-      },
-      onComplete: (response) {
-        try {
-          final publicUrl =
-              _supabase.storage.from(bucketName).getPublicUrl(objectName);
-
-          'Upload completed for file ID: $newFileId - URL: $publicUrl'
+      await client.startUpload(
+        onProgress: (count, total, response) {
+          'Progress: $count of $total | ${(count / total * 100).toInt()}%'
               .logIf(enableDebugLogs);
 
-          final progress = _progressMap[newFileId]!;
-          final completedProgress = progress.copyWith(
-            count: progress.total,
-            response: response,
-          );
+          onUploadProgress?.call(count, total, response);
 
-          _progressMap[newFileId] = completedProgress;
-          _progressController.add(completedProgress);
+          final progress =
+              ProgressResult(count: count, total: total, response: response);
+          _progressMap[newFileId] = progress;
+          _progressController.add(progress);
+        },
+        onComplete: (response) {
+          try {
+            final publicUrl =
+                _supabase.storage.from(bucketName).getPublicUrl(objectName);
 
-          _urlCompleters[newFileId]!.complete(publicUrl);
-          _completionController.add(newFileId);
-        } catch (error, stackTrace) {
-          if (enableDebugLogs) {
-            dev.log(
-              'Error completing upload for file ID: $newFileId ',
-              error: error,
-              stackTrace: stackTrace,
-              name: 'supabase_progress_uploads',
+            'Upload completed for file ID: $newFileId - URL: $publicUrl'
+                .logIf(enableDebugLogs);
+
+            final progress = _progressMap[newFileId]!;
+            final completedProgress = progress.copyWith(
+              count: progress.total,
+              response: response,
             );
-          }
-        }
-      },
-    );
 
-    return _urlCompleters[newFileId]!.future;
+            _progressMap[newFileId] = completedProgress;
+            _progressController.add(completedProgress);
+
+            _urlCompleters[newFileId]!.complete(publicUrl);
+            _completionController.add(newFileId);
+          } catch (error, stackTrace) {
+            if (enableDebugLogs) {
+              dev.log(
+                'Error completing upload for file ID: $newFileId ',
+                error: error,
+                stackTrace: stackTrace,
+                name: 'supabase_progress_uploads',
+              );
+            }
+          }
+        },
+      );
+
+      return _urlCompleters[newFileId]!.future;
+    } catch (_) {
+      rethrow;
+    } finally {
+      _clients.remove(newFileId);
+      _progressMap.remove(newFileId);
+      _urlCompleters.remove(newFileId);
+    }
   }
 
   String _buildRootPath(String? userId, String fileName) {
