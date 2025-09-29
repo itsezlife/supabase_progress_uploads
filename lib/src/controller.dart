@@ -66,7 +66,7 @@ class SupabaseUploadController {
       'cache-control': cacheControl,
     };
 
-    final userId = _supabase.auth.currentUser!.id;
+    final userId = _supabase.auth.currentUser?.id;
     final filename = file.name;
     final fileName = path.basename(filename);
     final fileType = file.mimeType ?? contentType ?? 'image/*';
@@ -148,8 +148,11 @@ class SupabaseUploadController {
     return _urlCompleters[newFileId]!.future;
   }
 
-  String _buildRootPath(String userId, String fileName) {
-    if (rootPath == null) return '$userId/$fileName';
+  String _buildRootPath(String? userId, String fileName) {
+    if (rootPath == null) {
+      if (userId == null) return fileName;
+      return '$userId/$fileName';
+    }
     if (rootPath!.isEmpty) return fileName;
     return '$rootPath/$fileName';
   }
