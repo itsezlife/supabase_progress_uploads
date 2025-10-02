@@ -62,6 +62,7 @@ class SupabaseUploadController {
     String? fileName,
     String? contentType,
     int? chunkSize,
+    String Function(String fileName)? fileRootPath,
     ProgressCallback? onUploadProgress,
   }) async {
     final newFileId = fileId ?? generateFileId();
@@ -81,7 +82,8 @@ class SupabaseUploadController {
       final $fileName = path.basename(filename);
       final fileType =
           file.mimeType ?? contentType ?? 'image/${file.extension()}';
-      final objectName = _buildRootPath(userId, $fileName);
+      final objectName =
+          fileRootPath?.call($fileName) ?? _buildRootPath(userId, $fileName);
 
       _progressMap[newFileId] = const ProgressResult.empty();
 
